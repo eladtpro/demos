@@ -22,7 +22,7 @@ jobs:
             password: ${{ secrets.REGISTRY_PASSWORD }}
         - run: |
             docker build ./server/ -t ${{ secrets.REGISTRY_LOGIN_SERVER }}/github/node-web-app:v${{ github.run_id }} -t ${{ secrets.REGISTRY_LOGIN_SERVER }}/github/node-web-app:latest
-            docker push ${{ secrets.REGISTRY_LOGIN_SERVER }}/github/node-web-app:${{ github.sha }}
+            docker push ${{ secrets.REGISTRY_LOGIN_SERVER }}/github/node-web-app:${{ github.run_id }}
 
         - name: 'Deploy to Azure Container Instances'
           uses: 'azure/aci-deploy@v1'

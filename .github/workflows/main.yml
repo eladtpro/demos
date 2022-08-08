@@ -1,5 +1,5 @@
 on: [push]
-name: Linux_Container_Workflow
+name: Deploy_Node_Container_Azure_ACR
 
 jobs:
     build-and-deploy:

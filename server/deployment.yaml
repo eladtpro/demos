@@ -16,4 +16,4 @@ spec:
       - name: node-web-app
         image: crmaincontregistry.azurecr.io/github/node-web-app:v2821270443
         ports:
-        - containerPort: 80
+        - containerPort: 8080

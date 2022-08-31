@@ -1,6 +1,4 @@
 ﻿
-using System.IO.Compression;
-using Azure.Storage.Blobs;
 using System.IO.Packaging;
 
 namespace ImageIngest.Functions;
@@ -8,42 +6,62 @@ public static class Zipper
 {
 
     [FunctionName("Zipper")]
-    public static string Run(
+    public static async Task<string> Run(
         [ActivityTrigger] ActivityAction activity,
-        [Blob("ingest-db/{name}", Connection = "AzureWebJobsStorage")] BlobClient blobClient,
+        [Blob("zip/{activity.ZipName}.zip", FileAccess.Write, Connection = "AzureWebJobsZipStorage")] Stream blob, string name,
         [DurableClient] IDurableEntityClient client,
+        [OrchestrationTrigger] IDurableOrchestrationContext context,
         ILogger log)
     {
-        
-        //        await blobClient.DownloadStreamingAsync() .UploadAsync() .UploadFromStreamAsync(fileStream);
+        EntityId entityId = new EntityId(nameof(Tracker), activity.Namespace);
+        EntityStateResponse<Tracker> state = await client.ReadEntityStateAsync<Tracker>(entityId);
+        IList<ImageMetadata> batch = state.EntityState.Images.Values.Where(
+            v => (v.Status == ImageStatus.Marked && v.BatchId == activity.OverrideBatchId)
+            )
+            .ToList();
+        if (batch.Count < 1)
+            return null;
 
+        List<Tuple<ImageMetadata, Task<Stream>>> items = new List<Tuple<ImageMetadata, Task<Stream>>>();
 
-        ZipArchive archive = new ZipArchive(sbyte, ZipArchiveMode.Create, false);
-
-
-        return $"Hello {name}!";
-    }
-
-    private static void AddFileToZip(string zipFilename, string fileToAdd, CompressionOption compression = CompressionOption.Normal)
-    {
-        using (Package zip = System.IO.Packaging.Package.Open(zipFilename, FileMode.OpenOrCreate))
+        foreach (var item in batch)
         {
-            string destFilename = ".\\" + Path.GetFileName(fileToAdd);
-            Uri uri = PackUriHelper.CreatePartUri(new Uri(destFilename, UriKind.Relative));
-            if (zip.PartExists(uri))
+            string batchId = await context.CallActivityAsync<string>("CheckBatch", item.Name);
+
+            Task<Stream> task = context.CallActivityAsync<Stream>("Downloader", item.Name);
+            items.Add(new Tuple<ImageMetadata, Task<Stream>>(item, task));
+        }
+
+        await Task.WhenAll(items.Select(t => t.Item2));
+
+        using (Package zip = System.IO.Packaging.Package.Open(blob, FileMode.OpenOrCreate))
+        {
+            foreach (var item in items)
             {
-                zip.DeletePart(uri);
-            }
-            PackagePart part = zip.CreatePart(uri, "", compression);
-            using (FileStream fileStream = new FileStream(fileToAdd, FileMode.Open, FileAccess.Read))
-            {
-                using (Stream dest = part.GetStream())
-                {
-                    fileStream.CopyTo(dest);
+                if(item.Item2.Status != TaskStatus.RanToCompletion){
+                    log.LogError($"Cannot compress {item.Item1.Name}");
+                    continue;
                 }
+
+                string destFilename = ".\\" + Path.GetFileName(item.Item1.Name);
+                Uri uri = PackUriHelper.CreatePartUri(new Uri(destFilename, UriKind.Relative));
+                if (zip.PartExists(uri)) zip.DeletePart(uri);
+
+                PackagePart part = zip.CreatePart(uri, "", CompressionOption.NotCompressed);
+                using (Stream dest = part.GetStream())
+                    item.Item2.Result.CopyTo(dest);
             }
         }
-    }
 
+        await client.SignalEntityAsync<Tracker>(entityId, proxy => proxy.UpdateAll(
+            new ActivityAction
+            {
+                CurrentBatchId = activity.CurrentBatchId,
+                CurrentStatus = ImageStatus.Marked,
+                OverrideStatus = ImageStatus.Zipped
+            }));
+
+        return $"{name}.zip";
+    }
 }
 

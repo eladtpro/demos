@@ -1,42 +1,23 @@
+using ImageIngest.Functions.Interfaces;
 using Microsoft.Azure.Functions.Extensions.DependencyInjection;
-using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Extensions.DependencyInjection;
-using Newtonsoft.Json;
-using System.Collections.Generic;
 
-[assembly: FunctionsStartup(typeof(MyApplication.Startup))]
-namespace MyApplication
+[assembly: FunctionsStartup(typeof(ImageIngest.Functions.Startup))]
+
+namespace ImageIngest.Functions
 {
     public class Startup : FunctionsStartup
     {
         public override void Configure(IFunctionsHostBuilder builder)
         {
-            builder.Services.AddSingleton<IMessageSerializerSettingsFactory, CustomMessageSerializerSettingsFactory>();
-            builder.Services.AddSingleton<IErrorSerializerSettingsFactory, CustomErrorSerializerSettingsFactory>();
-        }
+            builder.Services.AddHttpClient();
+            //builder.Services.AddScoped<ITracker, Tracker>();
 
-        /// <summary>
-        /// A factory that provides the serialization for all inputs and outputs for activities and
-        /// orchestrations, as well as entity state.
-        /// </summary>
-        internal class CustomMessageSerializerSettingsFactory : IMessageSerializerSettingsFactory
-        {
-            public JsonSerializerSettings CreateJsonSerializerSettings()
-            {
-                // Return your custom JsonSerializerSettings here
-            }
-        }
+            // builder.Services.AddSingleton<IMyService>((s) => {
+            //     return new MyService();
+            // });
 
-        /// <summary>
-        /// A factory that provides the serialization for all exceptions thrown by activities
-        /// and orchestrations
-        /// </summary>
-        internal class CustomErrorSerializerSettingsFactory : IErrorSerializerSettingsFactory
-        {
-            public JsonSerializerSettings CreateJsonSerializerSettings()
-            {
-                // Return your custom JsonSerializerSettings here
-            }
+            // builder.Services.AddSingleton<ILoggerProvider, MyLoggerProvider>();
         }
     }
 }
